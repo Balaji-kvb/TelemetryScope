@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: telemetryscope-ingestion
+    static_configs:
+      - targets:
+          - telemetryscope-ingestion:8001
+
+  - job_name: telemetryscope-processing
+    static_configs:
+      - targets:
+          - telemetryscope-processing:8002
+
+  - job_name: telemetryscope-query
+    static_configs:
+      - targets:
+          - telemetryscope-query:8003
+
+  - job_name: telemetryscope-demo
+    static_configs:
+      - targets:
+          - telemetryscope-demo:8080

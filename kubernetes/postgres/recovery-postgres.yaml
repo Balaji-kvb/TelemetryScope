@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: telemetryscope-postgres-recovery-pvc
+  namespace: telemetryscope
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetryscope-postgres-recovery
+  namespace: telemetryscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetryscope-postgres-recovery
+  template:
+    metadata:
+      labels:
+        app: telemetryscope-postgres-recovery
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: telemetryscope
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: telemetryscope-db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: telemetryscope-db-credentials
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - telemetryscope_admin
+                - -d
+                - telemetryscope
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: telemetryscope-postgres-recovery-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetryscope-postgres-recovery
+  namespace: telemetryscope
+spec:
+  type: ClusterIP
+  selector:
+    app: telemetryscope-postgres-recovery
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

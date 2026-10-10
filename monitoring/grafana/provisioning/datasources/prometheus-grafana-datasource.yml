@@ -1,0 +1,10 @@
+apiVersion: 1
+
+datasources:
+  - name: TelemetryScope Prometheus
+    uid: telemetryscope-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

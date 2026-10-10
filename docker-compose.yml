@@ -1,0 +1,125 @@
+services:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: telemetryscope-grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: telemetryscope-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    restart: unless-stopped
+    depends_on:
+      - telemetryscope-ingestion
+      - telemetryscope-processing
+      - telemetryscope-query
+      - telemetryscope-demo
+  telemetryscope-postgres:
+    image: postgres:15-alpine
+    container_name: telemetryscope-postgres
+    environment:
+      - POSTGRES_USER=telemetryscope_admin
+      - POSTGRES_PASSWORD=admin_password
+      - POSTGRES_DB=telemetryscope
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U telemetryscope_admin -d telemetryscope"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  telemetryscope-ingestion:
+    build:
+      context: ./services/ingestion-service
+    container_name: telemetryscope-ingestion
+    ports:
+      - "8001:8001"
+    environment:
+      - TELEMETRYSCOPE_ENV=development
+      - PROCESSING_SERVICE_URL=http://telemetryscope-processing:8002
+      - TELEMETRYSCOPE_LOG_LEVEL=INFO
+    depends_on:
+      - telemetryscope-processing
+
+  telemetryscope-processing:
+    build:
+      context: ./services/processing-service
+    container_name: telemetryscope-processing
+    ports:
+      - "8002:8002"
+    environment:
+      - TELEMETRYSCOPE_ENV=development
+      - DATABASE_URL=postgresql://telemetryscope_writer:writer_password@telemetryscope-postgres:5432/telemetryscope
+      - TELEMETRYSCOPE_LOG_LEVEL=INFO
+    depends_on:
+      telemetryscope-postgres:
+        condition: service_healthy
+
+  telemetryscope-query:
+    build:
+      context: ./services/query-service
+    container_name: telemetryscope-query
+    ports:
+      - "8003:8003"
+    environment:
+      - TELEMETRYSCOPE_ENV=development
+      - DATABASE_URL=postgresql://telemetryscope_reader:reader_password@telemetryscope-postgres:5432/telemetryscope
+      - DEMO_API_URL=http://telemetryscope-demo:8080
+      - TELEMETRYSCOPE_LOG_LEVEL=INFO
+    depends_on:
+      telemetryscope-postgres:
+        condition: service_healthy
+
+  telemetryscope-demo:
+    build:
+      context: ./demo-workload
+    container_name: telemetryscope-demo
+    ports:
+      - "8080:8080"
+    environment:
+      - INGESTION_URL=http://telemetryscope-ingestion:8001/api/v1/logs
+      - TELEMETRYSCOPE_ENV=development
+    depends_on:
+      - telemetryscope-ingestion
+
+  telemetryscope-frontend:
+    build:
+      context: ./frontend
+    container_name: telemetryscope-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - telemetryscope-query
+
+volumes:
+  postgres_data:
+    name: telemetryscope_postgres_data
+
+  prometheus_data:
+    name: telemetryscope_prometheus_data
+
+  grafana_data:
+    name: telemetryscope_grafana_data

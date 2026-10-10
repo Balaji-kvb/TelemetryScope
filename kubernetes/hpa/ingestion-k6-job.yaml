@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: telemetryscope-ingestion-load
+  namespace: telemetryscope
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: telemetryscope-ingestion-load
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - run
+            - /scripts/ingestion-load.js
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: k6-script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: k6-script
+          configMap:
+            name: telemetryscope-k6-script

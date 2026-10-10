@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+venv/
+.venv/
+env/
+.env
+*.env.local
+
+# Node / React
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+.next/
+*.tsbuildinfo
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/terraform.tfvars
+terraform/*.auto.tfvars
+*.tfplan
+
+# Kubernetes secrets (local)
+kubernetes/secrets/*.yaml
+!kubernetes/secrets/*.example.yaml
+
+# Database
+*.sql.bak
+
+# Coverage
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# Logs
+*.log
+logs/
+
+# Pytest
+.pytest_cache/
+
+# AWS
+.aws/
+credentials
+
+# k6
+load-testing/results/
+
+# Lambda packaging
+lambda/alert-handler/package/
+lambda/alert-handler/*.zip
