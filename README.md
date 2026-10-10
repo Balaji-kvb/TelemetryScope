@@ -1,6 +1,6 @@
 # TelemetryScope — Cloud-Native Observability & Log Analytics Platform
 
-## Overview
+[![CI](https://github.com/Balaji-kvb/TelemetryScope/actions/workflows/ci.yml/badge.svg)](https://github.com/Balaji-kvb/TelemetryScope/actions/workflows/ci.yml)
 
 **TelemetryScope** is a lightweight cloud-native observability and log analytics platform built as an academic project for **INT378 – Advancements in Cloud & DevOps**.
 
