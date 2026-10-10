@@ -1,7 +1,5 @@
 # TelemetryScope — Cloud-Native Observability & Log Analytics Platform
 
-[![CI](https://github.com/<YOUR_USERNAME>/<REPOSITORY_NAME>/actions/workflows/ci.yml/badge.svg)](https://github.com/<YOUR_USERNAME>/<REPOSITORY_NAME>/actions/workflows/ci.yml)
-
 ## Overview
 
 **TelemetryScope** is a lightweight cloud-native observability and log analytics platform built as an academic project for **INT378 – Advancements in Cloud & DevOps**.
@@ -77,10 +75,10 @@ Demo Workload / k6 / Simulator
 ### Alert Flow
 
 ```
-Processing Service ──(condition met)──▶ Async Lambda ──▶ Optional SNS
+Processing Service ──(condition met)──▶ Database Insert ──▶ Optional External Webhook/Lambda
 ```
 
-Lambda is never a blocking dependency on the ingestion path.
+External Webhooks are configured via environment variables and are never a blocking dependency on the ingestion path.
 
 ---
 
@@ -92,18 +90,10 @@ Lambda is never a blocking dependency on the ingestion path.
 | Backend | Python + Flask + Gunicorn |
 | Database | PostgreSQL |
 | Containers | Docker |
-| Orchestration | Kubernetes |
-| Cloud Runtime | Amazon EKS |
-| Load Balancing | AWS ALB (via AWS LB Controller) |
-| Load Testing | k6 (local + EC2) |
-| IaC | Terraform |
+| Orchestration | Kubernetes (Minikube) |
+| Load Testing | k6 (local) |
 | Metrics | Prometheus |
 | Visualization | Grafana |
-| Serverless | AWS Lambda |
-| Notification | SNS (optional) |
-| Staging | Elastic Beanstalk |
-| CI/CD | GitHub Actions |
-| Registry | Amazon ECR |
 
 ---
 
@@ -120,9 +110,6 @@ TelemetryScope/
 ├── database/               # Migrations + seed data
 ├── kubernetes/             # K8s manifests (deployments, HPA, RBAC, etc.)
 ├── load-testing/           # k6 scripts (normal, spike, errors, latency)
-├── lambda/                 # Alert handler Lambda
-├── terraform/              # AWS infrastructure as code
-├── .github/workflows/      # CI/CD pipelines
 ├── docs/                   # Architecture, API contract, runbook, viva
 ├── docker-compose.yml      # Local development environment
 ├── Makefile                # Development shortcuts
@@ -150,8 +137,8 @@ TelemetryScope/
 
 ```bash
 # Clone (Replace with actual repository URL)
-git clone https://github.com/<YOUR_USERNAME>/<REPOSITORY_NAME>.git
-cd telemetryscope
+git clone https://github.com/Balaji-kvb/TelemetryScope.git
+cd TelemetryScope
 
 # Start all services
 docker compose up --build
