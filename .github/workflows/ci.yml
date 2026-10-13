@@ -1,17 +1,19 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: read
+  id-token: write  # Required for AWS OIDC authentication
 
 jobs:
   frontend-build:
-    name: Frontend Build
+    name: Frontend Build & Lint
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
@@ -79,5 +81,120 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Docker Image
-        # Build without pushing just to validate the Dockerfile steps succeed
         run: docker build -t test-${{ strategy.job-index }} -f ${{ matrix.component }}/Dockerfile ${{ matrix.component }}
+
+  lambda-validation:
+    name: Lambda Alert Handler Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Lambda Unit Tests
+        working-directory: lambda/alert-handler
+        run: python test_handler.py
+
+  ecr-publish:
+    name: Publish Images to Amazon ECR
+    runs-on: ubuntu-24.04
+    needs: [frontend-build, backend-checks, docker-validation, lambda-validation]
+    if: github.ref == 'refs/heads/main' && vars.AWS_ROLE_TO_ASSUME != ''
+    strategy:
+      matrix:
+        include:
+          - service: frontend
+            context: frontend
+            repo: telemetryscope/frontend
+          - service: ingestion
+            context: services/ingestion-service
+            repo: telemetryscope/ingestion
+          - service: processing
+            context: services/processing-service
+            repo: telemetryscope/processing
+          - service: query
+            context: services/query-service
+            repo: telemetryscope/query
+          - service: demo
+            context: demo-workload
+            repo: telemetryscope/demo
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/${{ matrix.repo }}:$IMAGE_TAG -t $ECR_REGISTRY/${{ matrix.repo }}:latest ${{ matrix.context }}
+          docker push $ECR_REGISTRY/${{ matrix.repo }}:$IMAGE_TAG
+          docker push $ECR_REGISTRY/${{ matrix.repo }}:latest
+
+  deploy-eks:
+    name: Continuous Deployment (EKS Rollout)
+    runs-on: ubuntu-24.04
+    needs: [ecr-publish]
+    if: github.ref == 'refs/heads/main' && vars.AWS_ROLE_TO_ASSUME != ''
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Update Kubeconfig
+        run: |
+          aws eks update-kubeconfig --name telemetryscope-cluster --region ap-south-1
+
+      - name: Deploy AWS Manifests
+        run: |
+          # Ensure application namespace exists (pre-created during bootstrap)
+          kubectl get namespace telemetryscope >/dev/null 2>&1 || kubectl apply -f kubernetes/aws/00-namespace.yaml || true
+          kubectl apply -f kubernetes/aws/01-db-secret.yaml
+          kubectl apply -f kubernetes/aws/01-postgres-init-cm.yaml
+          kubectl apply -f kubernetes/aws/02-postgres.yaml
+          # Update container images to match current commit SHA
+          sed -i -E "s|:(93ad5a0|latest|[0-9a-f]{7,40})|:${{ github.sha }}|g" kubernetes/aws/03-backend.yaml kubernetes/aws/04-frontend.yaml
+          kubectl apply -f kubernetes/aws/03-backend.yaml
+          kubectl apply -f kubernetes/aws/04-frontend.yaml
+          kubectl apply -f kubernetes/aws/05-monitoring.yaml
+          kubectl apply -f kubernetes/aws/06-ingress.yaml
+
+      - name: Wait for Rollout Completion
+        run: |
+          kubectl rollout status deployment/telemetryscope-ingestion -n telemetryscope --timeout=180s
+          kubectl rollout status deployment/telemetryscope-processing -n telemetryscope --timeout=180s
+          kubectl rollout status deployment/telemetryscope-query -n telemetryscope --timeout=180s
+          kubectl rollout status deployment/telemetryscope-frontend -n telemetryscope --timeout=180s
+
+      - name: Post-Deployment Smoke Tests
+        run: |
+          echo "Verifying cluster deployments and endpoints..."
+          kubectl get pods -n telemetryscope -o wide
+          kubectl get ingress -n telemetryscope
+          # Forward ingestion service port to runner localhost via EKS API tunnel
+          kubectl port-forward svc/telemetryscope-ingestion -n telemetryscope 8001:8001 &
+          PF_PID=$!
+          sleep 5
+          curl -f --max-time 10 http://127.0.0.1:8001/health || { kill $PF_PID 2>/dev/null || true; exit 1; }
+          kill $PF_PID 2>/dev/null || true
+          echo "Automated CD cloud deployment and smoke tests passed successfully!"
+

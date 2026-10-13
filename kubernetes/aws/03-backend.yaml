@@ -1,0 +1,251 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetryscope-ingestion
+  namespace: telemetryscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetryscope-ingestion
+  template:
+    metadata:
+      labels:
+        app: telemetryscope-ingestion
+    spec:
+      containers:
+        - name: ingestion
+          image: 667747481883.dkr.ecr.ap-south-1.amazonaws.com/telemetryscope/ingestion:93ad5a0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8001
+          env:
+            - name: PROCESSING_SERVICE_URL
+              value: http://telemetryscope-processing:8002
+            - name: TELEMETRYSCOPE_ENV
+              value: staging
+            - name: TELEMETRYSCOPE_LOG_LEVEL
+              value: INFO
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetryscope-ingestion
+  namespace: telemetryscope
+spec:
+  selector:
+    app: telemetryscope-ingestion
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetryscope-processing
+  namespace: telemetryscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetryscope-processing
+  template:
+    metadata:
+      labels:
+        app: telemetryscope-processing
+    spec:
+      containers:
+        - name: processing
+          image: 667747481883.dkr.ecr.ap-south-1.amazonaws.com/telemetryscope/processing:93ad5a0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8002
+          env:
+            - name: WRITER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: telemetryscope-db-credentials
+                  key: WRITER_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://telemetryscope_writer:$(WRITER_PASSWORD)@telemetryscope-postgres-recovery:5432/telemetryscope"
+            - name: TELEMETRYSCOPE_ENV
+              value: staging
+            - name: TELEMETRYSCOPE_LOG_LEVEL
+              value: INFO
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8002
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetryscope-processing
+  namespace: telemetryscope
+spec:
+  selector:
+    app: telemetryscope-processing
+  ports:
+    - name: http
+      port: 8002
+      targetPort: 8002
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetryscope-query
+  namespace: telemetryscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetryscope-query
+  template:
+    metadata:
+      labels:
+        app: telemetryscope-query
+    spec:
+      containers:
+        - name: query
+          image: 667747481883.dkr.ecr.ap-south-1.amazonaws.com/telemetryscope/query:93ad5a0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8003
+          env:
+            - name: READER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: telemetryscope-db-credentials
+                  key: READER_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://telemetryscope_reader:$(READER_PASSWORD)@telemetryscope-postgres-recovery:5432/telemetryscope"
+            - name: DEMO_API_URL
+              value: http://telemetryscope-demo:8080
+            - name: TELEMETRYSCOPE_ENV
+              value: staging
+            - name: TELEMETRYSCOPE_LOG_LEVEL
+              value: INFO
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8003
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetryscope-query
+  namespace: telemetryscope
+spec:
+  selector:
+    app: telemetryscope-query
+  ports:
+    - name: http
+      port: 8003
+      targetPort: 8003
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetryscope-demo
+  namespace: telemetryscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetryscope-demo
+  template:
+    metadata:
+      labels:
+        app: telemetryscope-demo
+    spec:
+      containers:
+        - name: demo
+          image: 667747481883.dkr.ecr.ap-south-1.amazonaws.com/telemetryscope/demo:93ad5a0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: INGESTION_URL
+              value: http://telemetryscope-ingestion:8001/api/v1/logs
+            - name: INGESTION_SERVICE_URL
+              value: http://telemetryscope-ingestion:8001
+            - name: TELEMETRYSCOPE_ENV
+              value: staging
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetryscope-demo
+  namespace: telemetryscope
+spec:
+  selector:
+    app: telemetryscope-demo
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

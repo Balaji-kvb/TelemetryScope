@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: telemetryscope
+data:
+  01-roles.sql: |
+    CREATE ROLE telemetryscope_writer WITH LOGIN PASSWORD 'writer_password';
+    CREATE ROLE telemetryscope_reader WITH LOGIN PASSWORD 'reader_password';
+    CREATE ROLE telemetryscope_migrator WITH LOGIN PASSWORD 'migrator_password';
+    GRANT ALL PRIVILEGES ON DATABASE telemetryscope TO telemetryscope_admin;
+  02-schema.sql: |
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+    CREATE TABLE IF NOT EXISTS logs (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        timestamp       TIMESTAMPTZ NOT NULL,
+        received_at     TIMESTAMPTZ NOT NULL,
+        service         VARCHAR(100) NOT NULL,
+        environment     VARCHAR(50) NOT NULL DEFAULT 'development',
+        severity        VARCHAR(20) NOT NULL DEFAULT 'INFO',
+        message         TEXT NOT NULL,
+        request_id      VARCHAR(100),
+        trace_id        VARCHAR(100),
+        endpoint        VARCHAR(500),
+        status_code     SMALLINT,
+        duration_ms     REAL,
+        fingerprint     VARCHAR(64),
+        metadata        JSONB DEFAULT '{}',
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs (timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_logs_service ON logs (service);
+    CREATE INDEX IF NOT EXISTS idx_logs_severity ON logs (severity);
+    CREATE INDEX IF NOT EXISTS idx_logs_environment ON logs (environment);
+    CREATE INDEX IF NOT EXISTS idx_logs_fingerprint ON logs (fingerprint);
+    CREATE INDEX IF NOT EXISTS idx_logs_request_id ON logs (request_id);
+
+    CREATE TABLE IF NOT EXISTS error_groups (
+        fingerprint     VARCHAR(64) PRIMARY KEY,
+        service         VARCHAR(100) NOT NULL,
+        severity        VARCHAR(20) NOT NULL,
+        normalized_message TEXT NOT NULL,
+        sample_message  TEXT NOT NULL,
+        sample_endpoint VARCHAR(500),
+        event_count     BIGINT NOT NULL DEFAULT 1,
+        first_seen      TIMESTAMPTZ NOT NULL,
+        last_seen       TIMESTAMPTZ NOT NULL,
+        status          VARCHAR(20) NOT NULL DEFAULT 'unresolved',
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_error_groups_service ON error_groups (service);
+    CREATE INDEX IF NOT EXISTS idx_error_groups_status ON error_groups (status);
+    CREATE INDEX IF NOT EXISTS idx_error_groups_last_seen ON error_groups (last_seen DESC);
+
+    CREATE TABLE IF NOT EXISTS alerts (
+        id              VARCHAR(64) PRIMARY KEY,
+        rule            VARCHAR(100) NOT NULL,
+        severity        VARCHAR(20) NOT NULL,
+        service         VARCHAR(100) NOT NULL,
+        current_value   REAL NOT NULL,
+        threshold       REAL NOT NULL,
+        message         TEXT NOT NULL,
+        timestamp       TIMESTAMPTZ NOT NULL,
+        dispatched      BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_alerts_service ON alerts (service);
+
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO telemetryscope_writer;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO telemetryscope_writer;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO telemetryscope_reader;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO telemetryscope_writer;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO telemetryscope_reader;

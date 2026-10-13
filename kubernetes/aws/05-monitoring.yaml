@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: telemetryscope
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+      evaluation_interval: 5s
+    scrape_configs:
+      - job_name: 'telemetryscope-ingestion'
+        static_configs:
+          - targets: ['telemetryscope-ingestion:8001']
+      - job_name: 'telemetryscope-processing'
+        static_configs:
+          - targets: ['telemetryscope-processing:8002']
+      - job_name: 'telemetryscope-query'
+        static_configs:
+          - targets: ['telemetryscope-query:8003']
+      - job_name: 'telemetryscope-demo'
+        static_configs:
+          - targets: ['telemetryscope-demo:8080']
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetryscope-prometheus
+  namespace: telemetryscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetryscope-prometheus
+  template:
+    metadata:
+      labels:
+        app: telemetryscope-prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetryscope-prometheus
+  namespace: telemetryscope
+spec:
+  selector:
+    app: telemetryscope-prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetryscope-grafana
+  namespace: telemetryscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetryscope-grafana
+  template:
+    metadata:
+      labels:
+        app: telemetryscope-grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          ports:
+            - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetryscope-grafana
+  namespace: telemetryscope
+spec:
+  selector:
+    app: telemetryscope-grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
