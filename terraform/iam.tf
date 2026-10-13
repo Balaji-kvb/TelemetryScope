@@ -262,8 +262,12 @@ resource "aws_iam_role" "github_actions_cd" {
         Condition = {
           StringEquals = {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          }
+          StringLike = {
             "token.actions.githubusercontent.com:sub" = [
               "repo:Balaji-kvb/TelemetryScope:ref:refs/heads/main",
+              "repo:Balaji-kvb@177029598/TelemetryScope@1413434883:ref:refs/heads/main",
+              "repo:Balaji-kvb*TelemetryScope*:ref:refs/heads/main",
               "repo:Balaji-kvb/TelemetryScope:environment:production"
             ]
           }
