@@ -171,7 +171,7 @@ jobs:
           kubectl apply -f kubernetes/aws/01-db-secret.yaml
           kubectl apply -f kubernetes/aws/01-postgres-init-cm.yaml
           kubectl apply -f kubernetes/aws/02-postgres.yaml
-          python3 -c "import sys, re; sha = sys.argv[1]; [open(f, 'w').write(re.sub(r':([0-9a-f]{7,40}|latest)', f':{sha}', open(f).read())) for f in sys.argv[2:]]" ${{ github.sha }} kubernetes/aws/03-backend.yaml kubernetes/aws/04-frontend.yaml
+          python3 -c "import sys, pathlib, re; sha = sys.argv[1]; [pathlib.Path(f).write_text(re.sub(r':([0-9a-f]{7,40}|latest)', f':{sha}', pathlib.Path(f).read_text())) for f in sys.argv[2:]]" ${{ github.sha }} kubernetes/aws/03-backend.yaml kubernetes/aws/04-frontend.yaml
           kubectl apply -f kubernetes/aws/03-backend.yaml
           kubectl apply -f kubernetes/aws/04-frontend.yaml
           kubectl apply -f kubernetes/aws/05-monitoring.yaml
